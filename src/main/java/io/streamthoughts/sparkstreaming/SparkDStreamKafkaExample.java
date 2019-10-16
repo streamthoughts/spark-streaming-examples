@@ -60,29 +60,21 @@ public class SparkDStreamKafkaExample {
             KafkaUtils.createDirectStream(
                 ssc,
                 LocationStrategies.PreferConsistent(),
-                // Fist, Spark will create one Kafka Consumer on driver (DirectKafkaInputDStream#start:260)
-                // On batch interval, the DStreams consumer is used to lookup latest offset (DirectKafkaInputDStream#latestOffsets).
-                // Then, one consumer will be created per Kafka partition (task) using KafkaConsumer#assign().
                 ConsumerStrategies.Subscribe(topics, kafkaParams)
             );
 
-        // RDD is instance of KafkaRDD
         dstream.foreachRDD( rdd -> {
             OffsetRange[] offsetRanges = ((HasOffsetRanges) rdd.rdd()).offsetRanges();
 
-            // iterator is instance of KafkaRDDIterator
             rdd.foreachPartition( iterator -> {
 
                 while (iterator.hasNext()) {
                     ConsumerRecord<String, String> record = iterator.next();
                     System.out.println(record);
                     producer.value().send("output-topic", record.key(), record.value());
-                    // For producing into Kafka see : https://stackoverflow.com/questions/31590592/spark-streaming-read-and-write-on-kafka-topic
                 }
             });
 
-            // Commit async to ensure no data-loss.
-            // Note : business logic should support duplicates (at-least once semantic).
             ((CanCommitOffsets) dstream.inputDStream()).commitAsync(offsetRanges);
         });
 
